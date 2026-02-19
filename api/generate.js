@@ -1,21 +1,21 @@
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Método não permitido' });
-  }
+  // Configuração de Headers para evitar qualquer bloqueio
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  // Garante que o prompt seja lido corretamente
-  let prompt;
-  try {
-    prompt = typeof req.body === 'string' ? JSON.parse(req.body).prompt : req.body.prompt;
-  } catch (e) {
-    return res.status(400).json({ error: 'Erro ao processar o JSON' });
-  }
-
-  if (!prompt) {
-    return res.status(400).json({ error: 'O prompt é obrigatório' });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).send('Use POST');
 
   try {
+    // Tenta pegar o prompt de diferentes formas (body parseado ou bruto)
+    const data = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    const prompt = data?.prompt;
+
+    if (!prompt) {
+      return res.status(400).json({ error: 'Prompt vazio' });
+    }
+
     const response = await fetch(
       "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell",
       {
@@ -24,33 +24,23 @@ export default async function handler(req, res) {
           "Content-Type": "application/json",
         },
         method: "POST",
-        body: JSON.stringify({
-          inputs: prompt,
-          parameters: {
-            guidance_scale: 3.5,
-            num_inference_steps: 4,
-          },
-          options: {
-            wait_for_model: true // CRÍTICO: Evita erro se o modelo estiver carregando
-          }
+        body: JSON.stringify({ 
+            inputs: prompt,
+            options: { wait_for_model: true } 
         }),
       }
     );
 
     if (!response.ok) {
-      const errorMsg = await response.text();
-      console.error("Erro Hugging Face:", errorMsg); // Aparecerá nos logs do Vercel
-      return res.status(response.status).json({ error: "Erro na API externa", details: errorMsg });
+        const errorText = await response.text();
+        return res.status(response.status).json({ hf_error: errorText });
     }
 
     const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
     res.setHeader('Content-Type', 'image/jpeg');
-    return res.send(buffer);
+    return res.send(Buffer.from(arrayBuffer));
 
-  } catch (error) {
-    console.error("Erro Interno:", error);
-    return res.status(500).json({ error: 'Erro interno', message: error.message });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 }
