@@ -3,117 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Crisálida Engine | FLUX.1</title>
+    <title>Bunix | Gerador Oficial Crisálida</title>
     <style>
-        :root { --glow: #a020f0; --dark: #050505; --gray: #1a1a1a; }
-        body { 
-            background: var(--dark); color: #e0e0e0; font-family: 'Segoe UI', Roboto, sans-serif;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            min-height: 100vh; margin: 0; overflow-x: hidden;
-        }
-        .app-card {
-            background: var(--gray); border: 1px solid #333; padding: 2rem;
-            border-radius: 20px; width: 90%; max-width: 450px; text-align: center;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
-        }
-        h1 { color: var(--glow); letter-spacing: 2px; text-transform: uppercase; margin-top: 0; }
-        .input-group { margin-top: 20px; position: relative; }
-        input {
-            width: 100%; padding: 15px; border-radius: 10px; border: 1px solid #444;
-            background: #000; color: #fff; box-sizing: border-box; outline: none;
-            transition: 0.3s;
-        }
-        input:focus { border-color: var(--glow); box-shadow: 0 0 10px rgba(160, 32, 240, 0.3); }
-        button {
-            width: 100%; margin-top: 15px; padding: 15px; border-radius: 10px;
-            border: none; background: var(--glow); color: white; font-weight: bold;
-            cursor: pointer; text-transform: uppercase; transition: 0.2s;
-        }
-        button:hover { filter: brightness(1.2); transform: translateY(-2px); }
-        button:disabled { background: #444; cursor: not-allowed; transform: none; }
-        
-        #display-area {
-            margin-top: 25px; min-height: 300px; border-radius: 12px;
-            background: #000; border: 1px dashed #444;
-            display: flex; align-items: center; justify-content: center; overflow: hidden;
-        }
-        img { width: 100%; height: auto; animation: fadeIn 0.5s ease; }
-        .error-box { 
-            color: #ff5555; font-size: 12px; background: rgba(255,0,0,0.1); 
-            padding: 10px; border-radius: 8px; border: 1px solid #ff5555;
-            text-align: left; overflow-wrap: break-word; width: 100%;
-        }
-        .loader {
-            border: 4px solid #333; border-top: 4px solid var(--glow);
-            border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;
-        }
+        :root { --primary: #00d4ff; --bg: #050505; }
+        body { background: var(--bg); color: #fff; font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: #111; border: 1px solid var(--primary); padding: 30px; border-radius: 20px; width: 400px; text-align: center; box-shadow: 0 0 20px rgba(0,212,255,0.2); }
+        h1 { color: var(--primary); text-transform: uppercase; margin-bottom: 5px; }
+        p { font-size: 12px; color: #aaa; margin-bottom: 20px; }
+        input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #333; background: #000; color: #fff; margin-bottom: 15px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; border-radius: 8px; border: none; background: var(--primary); color: #000; font-weight: bold; cursor: pointer; }
+        #result { margin-top: 20px; min-height: 300px; border: 1px dashed #333; display: flex; align-items: center; justify-content: center; }
+        img { width: 100%; border-radius: 10px; }
+        .loader { border: 3px solid #333; border-top: 3px solid var(--primary); border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
 <body>
 
-<div class="app-card">
-    <h1>Crisálida</h1>
-    <p style="color: #888;">Gerador FLUX.1 [Schnell]</p>
-
-    <div class="input-group">
-        <input type="text" id="promptInput" placeholder="Descreva sua visão...">
-        <button id="genBtn">Invocação Visual</button>
-    </div>
-
-    <div id="display-area">
-        <span id="statusText" style="color:#555">Aguardando comando...</span>
-    </div>
+<div class="card">
+    <h1>BUNIX 🦋</h1>
+    <p>Gerador Oficial da Irmandade Crisálida</p>
+    <input type="text" id="q" placeholder="O que deseja criar?">
+    <button id="btn" onclick="generate()">GERAR ARTE</button>
+    <div id="result">Aguardando...</div>
 </div>
 
 <script>
-    const btn = document.getElementById('genBtn');
-    const input = document.getElementById('promptInput');
-    const display = document.getElementById('display-area');
+    async function generate() {
+        const q = document.getElementById('q').value;
+        const btn = document.getElementById('btn');
+        const result = document.getElementById('result');
 
-    async function generateImage() {
-        const prompt = input.value.trim();
-        if (!prompt) return alert("O campo está vazio, mestre.");
+        if(!q) return alert("Insira um texto!");
 
-        // Início do Estado de Loading
         btn.disabled = true;
-        btn.innerText = "Processando...";
-        display.innerHTML = '<div class="loader"></div>';
+        btn.innerText = "GERANDO...";
+        result.innerHTML = '<div class="loader"></div>';
 
         try {
-            const response = await fetch('/api/generate', {
+            const res = await fetch('/api/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt: prompt })
+                body: JSON.stringify({ prompt: q })
             });
 
-            // Se a API retornar erro (400, 401, 500, etc)
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(JSON.stringify(errorData, null, 2));
-            }
+            if(!res.ok) throw new Error("Erro na geração");
 
-            // Se chegar aqui, temos a imagem
-            const imageBlob = await response.blob();
-            const url = URL.createObjectURL(imageBlob);
-            display.innerHTML = `<img src="${url}" alt="Resultado">`;
-
+            const blob = await res.blob();
+            result.innerHTML = `<img src="${URL.createObjectURL(blob)}">`;
         } catch (err) {
-            console.error("Erro na Requisição:", err);
-            display.innerHTML = `
-                <div class="error-box">
-                    <strong>ERRO NO SISTEMA:</strong><br>
-                    <code>${err.message}</code>
-                </div>`;
+            result.innerHTML = `<span style="color:red">Falha no Servidor</span>`;
         } finally {
             btn.disabled = false;
-            btn.innerText = "Invocação Visual";
+            btn.innerText = "GERAR ARTE";
         }
     }
-
-    btn.addEventListener('click', generateImage);
-    input.addEventListener('keypress', (e) => { if(e.key === 'Enter') generateImage(); });
 </script>
 
 </body>
