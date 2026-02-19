@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-  // Configuração de Headers para evitar qualquer bloqueio
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -8,7 +7,6 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).send('Use POST');
 
   try {
-    // Tenta pegar o prompt de diferentes formas (body parseado ou bruto)
     const data = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
     const prompt = data?.prompt;
 
@@ -16,9 +14,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Prompt vazio' });
     }
 
-    const response = await fetch(
-      "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell",
-      {
+    // A NOVA URL DA API EM 2026
+    const API_URL = "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell";
+
+    const response = await fetch(API_URL, {
         headers: {
           "Authorization": `Bearer ${process.env.HF_TOKEN}`,
           "Content-Type": "application/json",
@@ -26,6 +25,10 @@ export default async function handler(req, res) {
         method: "POST",
         body: JSON.stringify({ 
             inputs: prompt,
+            parameters: {
+                guidance_scale: 3.5,
+                num_inference_steps: 4
+            },
             options: { wait_for_model: true } 
         }),
       }
