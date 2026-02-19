@@ -11,11 +11,9 @@ export default async function handler(req, res) {
         const transJson = await transRes.json();
         const translatedPrompt = transJson[0][0][0];
 
-        // 2. Configurações da Cloudflare
+        // 2. Configurações da Cloudflare (Dados da tua case)
         const ACCOUNT_ID = "648085ab1193eeacc92d058d278a0d83";
         const API_TOKEN = "EZnH74dXipNmuwQOtCAcW1oLQzJ5oKbTnpgBqJUI";
-        
-        // Vamos usar o FLUX Schnell da Cloudflare
         const model = "@cf/black-forest-labs/flux-1-schnell"; 
 
         const response = await fetch(
@@ -28,7 +26,7 @@ export default async function handler(req, res) {
                 },
                 body: JSON.stringify({
                     prompt: `${translatedPrompt}, high quality, detailed, 8k`,
-                    num_steps: 4 // O Flux Schnell exige apenas 4 passos
+                    num_steps: 4 
                 }),
             }
         );
@@ -38,20 +36,28 @@ export default async function handler(req, res) {
             return res.status(response.status).json({ error: "Erro Cloudflare", details: errorText });
         }
 
-        // --- AJUSTE CRÍTICO AQUI ---
-        // A Cloudflare pode retornar a imagem direto ou um JSON com a imagem dentro.
-        // Vamos forçar a leitura como ArrayBuffer para garantir a integridade do arquivo.
-        const arrayBuffer = await response.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-
-        // Definimos o Header como PNG ou JPEG
-        res.setHeader('Content-Type', 'image/png'); 
-        res.setHeader('Content-Length', buffer.length);
+        // --- A SOLUÇÃO ESTÁ AQUI ---
+        const result = await response.json(); // A Cloudflare retorna um JSON { result: { image: "base64..." } }
         
+        let base64Image;
+        if (result.result && result.result.image) {
+            base64Image = result.result.image;
+        } else if (result.image) {
+            base64Image = result.image;
+        } else {
+            return res.status(500).json({ error: "Formato de resposta inesperado", data: result });
+        }
+
+        // Converte a string Base64 num Buffer binário
+        const buffer = Buffer.from(base64Image, 'base64');
+
+        // Envia como imagem real
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Content-Length', buffer.length);
         return res.send(buffer);
 
     } catch (error) {
-        console.error(error);
+        console.error("ERRO NO SERVIDOR:", error);
         return res.status(500).json({ error: "Erro no servidor", message: error.message });
     }
 }
