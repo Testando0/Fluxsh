@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerador Crisálida | FLUX.1</title>
+    <style>
+        :root { --primary: #8a2be2; --bg: #0a0a0a; --card: #161616; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .container { background: var(--card); padding: 2rem; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 90%; max-width: 500px; text-align: center; border: 1px solid #333; }
+        h1 { margin-bottom: 0.5rem; font-size: 1.5rem; color: var(--primary); }
+        p { color: #888; font-size: 0.9rem; margin-bottom: 1.5rem; }
+        input { width: 100%; padding: 12px; background: #222; border: 1px solid #444; border-radius: 8px; color: white; margin-bottom: 1rem; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: var(--primary); border: none; border-radius: 8px; color: white; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        button:hover { opacity: 0.8; }
+        button:disabled { background: #444; cursor: not-allowed; }
+        #output { margin-top: 1.5rem; min-height: 300px; border-radius: 8px; background: #000; display: flex; align-items: center; justify-content: center; position: relative; border: 1px solid #333; overflow: hidden; }
+        img { width: 100%; height: auto; display: block; border-radius: 8px; }
+        .loader { border: 3px solid #333; border-top: 3px solid var(--primary); border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Irmandade Crisálida</h1>
+    <p>Geração de imagens via FLUX.1 Schnell</p>
+    
+    <input type="text" id="prompt" placeholder="Ex: Um cavaleiro de cristal em estilo cyberpunk...">
+    <button id="genBtn">GERAR IMAGEM</button>
+
+    <div id="output">
+        <span id="placeholder">Sua arte aparecerá aqui</span>
+    </div>
+</div>
+
+<script>
+    const btn = document.getElementById('genBtn');
+    const input = document.getElementById('prompt');
+    const output = document.getElementById('output');
+
+    async function generate() {
+        const promptText = input.value.trim();
+        if (!promptText) return alert("Por favor, digite um prompt.");
+
+        // UI Loading
+        btn.disabled = true;
+        btn.innerText = "GERANDO...";
+        output.innerHTML = '<div class="loader"></div>';
+
+        try {
+            const response = await fetch('/api/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: promptText })
+            });
+
+            if (!response.ok) throw new Error("Falha ao gerar imagem.");
+
+            const blob = await response.blob();
+            const imageUrl = URL.createObjectURL(blob);
+            output.innerHTML = `<img src="${imageUrl}" alt="Imagem Gerada">`;
+            
+        } catch (err) {
+            output.innerHTML = `<span style="color: #ff4444; padding: 10px;">Erro: ${err.message}</span>`;
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "GERAR IMAGEM";
+        }
+    }
+
+    btn.addEventListener('click', generate);
+    input.addEventListener('keypress', (e) => { if(e.key === 'Enter') generate(); });
+</script>
+
+</body>
+</html>
