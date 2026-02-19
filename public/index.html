@@ -3,74 +3,117 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gerador Crisálida | FLUX.1</title>
+    <title>Crisálida Engine | FLUX.1</title>
     <style>
-        :root { --primary: #8a2be2; --bg: #0a0a0a; --card: #161616; }
-        body { font-family: 'Inter', sans-serif; background: var(--bg); color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .container { background: var(--card); padding: 2rem; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 90%; max-width: 500px; text-align: center; border: 1px solid #333; }
-        h1 { margin-bottom: 0.5rem; font-size: 1.5rem; color: var(--primary); }
-        p { color: #888; font-size: 0.9rem; margin-bottom: 1.5rem; }
-        input { width: 100%; padding: 12px; background: #222; border: 1px solid #444; border-radius: 8px; color: white; margin-bottom: 1rem; box-sizing: border-box; }
-        button { width: 100%; padding: 12px; background: var(--primary); border: none; border-radius: 8px; color: white; font-weight: bold; cursor: pointer; transition: 0.3s; }
-        button:hover { opacity: 0.8; }
-        button:disabled { background: #444; cursor: not-allowed; }
-        #output { margin-top: 1.5rem; min-height: 300px; border-radius: 8px; background: #000; display: flex; align-items: center; justify-content: center; position: relative; border: 1px solid #333; overflow: hidden; }
-        img { width: 100%; height: auto; display: block; border-radius: 8px; }
-        .loader { border: 3px solid #333; border-top: 3px solid var(--primary); border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
+        :root { --glow: #a020f0; --dark: #050505; --gray: #1a1a1a; }
+        body { 
+            background: var(--dark); color: #e0e0e0; font-family: 'Segoe UI', Roboto, sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh; margin: 0; overflow-x: hidden;
+        }
+        .app-card {
+            background: var(--gray); border: 1px solid #333; padding: 2rem;
+            border-radius: 20px; width: 90%; max-width: 450px; text-align: center;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+        }
+        h1 { color: var(--glow); letter-spacing: 2px; text-transform: uppercase; margin-top: 0; }
+        .input-group { margin-top: 20px; position: relative; }
+        input {
+            width: 100%; padding: 15px; border-radius: 10px; border: 1px solid #444;
+            background: #000; color: #fff; box-sizing: border-box; outline: none;
+            transition: 0.3s;
+        }
+        input:focus { border-color: var(--glow); box-shadow: 0 0 10px rgba(160, 32, 240, 0.3); }
+        button {
+            width: 100%; margin-top: 15px; padding: 15px; border-radius: 10px;
+            border: none; background: var(--glow); color: white; font-weight: bold;
+            cursor: pointer; text-transform: uppercase; transition: 0.2s;
+        }
+        button:hover { filter: brightness(1.2); transform: translateY(-2px); }
+        button:disabled { background: #444; cursor: not-allowed; transform: none; }
+        
+        #display-area {
+            margin-top: 25px; min-height: 300px; border-radius: 12px;
+            background: #000; border: 1px dashed #444;
+            display: flex; align-items: center; justify-content: center; overflow: hidden;
+        }
+        img { width: 100%; height: auto; animation: fadeIn 0.5s ease; }
+        .error-box { 
+            color: #ff5555; font-size: 12px; background: rgba(255,0,0,0.1); 
+            padding: 10px; border-radius: 8px; border: 1px solid #ff5555;
+            text-align: left; overflow-wrap: break-word; width: 100%;
+        }
+        .loader {
+            border: 4px solid #333; border-top: 4px solid var(--glow);
+            border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;
+        }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>Irmandade Crisálida</h1>
-    <p>Geração de imagens via FLUX.1 Schnell</p>
-    
-    <input type="text" id="prompt" placeholder="Ex: Um cavaleiro de cristal em estilo cyberpunk...">
-    <button id="genBtn">GERAR IMAGEM</button>
+<div class="app-card">
+    <h1>Crisálida</h1>
+    <p style="color: #888;">Gerador FLUX.1 [Schnell]</p>
 
-    <div id="output">
-        <span id="placeholder">Sua arte aparecerá aqui</span>
+    <div class="input-group">
+        <input type="text" id="promptInput" placeholder="Descreva sua visão...">
+        <button id="genBtn">Invocação Visual</button>
+    </div>
+
+    <div id="display-area">
+        <span id="statusText" style="color:#555">Aguardando comando...</span>
     </div>
 </div>
 
 <script>
     const btn = document.getElementById('genBtn');
-    const input = document.getElementById('prompt');
-    const output = document.getElementById('output');
+    const input = document.getElementById('promptInput');
+    const display = document.getElementById('display-area');
 
-    async function generate() {
-        const promptText = input.value.trim();
-        if (!promptText) return alert("Por favor, digite um prompt.");
+    async function generateImage() {
+        const prompt = input.value.trim();
+        if (!prompt) return alert("O campo está vazio, mestre.");
 
-        // UI Loading
+        // Início do Estado de Loading
         btn.disabled = true;
-        btn.innerText = "GERANDO...";
-        output.innerHTML = '<div class="loader"></div>';
+        btn.innerText = "Processando...";
+        display.innerHTML = '<div class="loader"></div>';
 
         try {
             const response = await fetch('/api/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt: promptText })
+                body: JSON.stringify({ prompt: prompt })
             });
 
-            if (!response.ok) throw new Error("Falha ao gerar imagem.");
+            // Se a API retornar erro (400, 401, 500, etc)
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(JSON.stringify(errorData, null, 2));
+            }
 
-            const blob = await response.blob();
-            const imageUrl = URL.createObjectURL(blob);
-            output.innerHTML = `<img src="${imageUrl}" alt="Imagem Gerada">`;
-            
+            // Se chegar aqui, temos a imagem
+            const imageBlob = await response.blob();
+            const url = URL.createObjectURL(imageBlob);
+            display.innerHTML = `<img src="${url}" alt="Resultado">`;
+
         } catch (err) {
-            output.innerHTML = `<span style="color: #ff4444; padding: 10px;">Erro: ${err.message}</span>`;
+            console.error("Erro na Requisição:", err);
+            display.innerHTML = `
+                <div class="error-box">
+                    <strong>ERRO NO SISTEMA:</strong><br>
+                    <code>${err.message}</code>
+                </div>`;
         } finally {
             btn.disabled = false;
-            btn.innerText = "GERAR IMAGEM";
+            btn.innerText = "Invocação Visual";
         }
     }
 
-    btn.addEventListener('click', generate);
-    input.addEventListener('keypress', (e) => { if(e.key === 'Enter') generate(); });
+    btn.addEventListener('click', generateImage);
+    input.addEventListener('keypress', (e) => { if(e.key === 'Enter') generateImage(); });
 </script>
 
 </body>
