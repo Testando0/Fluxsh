@@ -5,19 +5,24 @@ export default async function handler(req, res) {
         const { prompt: q } = req.body;
         if (!q) return res.status(400).json({ error: "Insira um texto" });
 
-        // 1. Tradução Automática (Igual à sua case)
+        // 1. Tradução Automática
+        // Dica: Se quiser textos exatos na imagem (ex: um manto escrito "Crisálida"),
+        // certifique-se de que o tradutor não altere a palavra.
         const translateUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=pt&tl=en&dt=t&q=${encodeURIComponent(q)}`;
         const transRes = await fetch(translateUrl);
         const transJson = await transRes.json();
         const translatedPrompt = transJson[0][0][0];
 
-        // 2. Configurações da Cloudflare (Dados Exatos da sua Case)
-        const ACCOUNT_ID = "648085ab1193eeacc92d058d278a0d83";
-        const API_TOKEN = "EZnH74dXipNmuwQOtCAcW1oLQzJ5oKbTnpgBqJUI";
-        const model = "@cf/leonardo/phoenix-1.0"; // O MODELO DA CASE
+        // 2. Configurações da Cloudflare
+        // 🚨 LEMBRE-SE DE TROCAR SEU TOKEN NO PAINEL E USAR VARIÁVEIS DE AMBIENTE (.env) 🚨
+        const ACCOUNT_ID = "648085ab1193eeacc92d058d278a0d83"; 
+        const API_TOKEN = "EZnH74dXipNmuwQOtCAcW1oLQzJ5oKbTnpgBqJUI"; 
+        
+        // Substituindo pelo Flux-1-Schnell (Nível máximo de realismo e texto na CF)
+        const model = "@cf/black-forest-labs/flux-1-schnell"; 
 
-        const finalPrompt = `${translatedPrompt}, high quality, detailed, 8k`;
-        const negativePrompt = "deformed, mutated, ugly, disfigured, bad anatomy, extra limbs, blurry, watermark, text, crossbreed";
+        // O Flux prefere prompts diretos. Limpamos a "sopa de palavras".
+        const finalPrompt = `${translatedPrompt}, highly detailed, 8k resolution, photorealistic`;
 
         const cfResponse = await fetch(
             `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/ai/run/${model}`,
@@ -29,9 +34,9 @@ export default async function handler(req, res) {
                 },
                 body: JSON.stringify({
                     prompt: finalPrompt,
-                    negative_prompt: negativePrompt,
-                    num_steps: 20, // OS PASSOS DA CASE
-                    guidance: 7.5  // O GUIDANCE DA CASE
+                    // Flux Schnell só precisa de 4 a 8 steps. 
+                    // 8 garante a precisão de texto "Nano Banana" sem esgotar seus créditos diários.
+                    num_steps: 8 
                 }),
             }
         );
