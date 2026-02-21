@@ -1,29 +1,26 @@
 export default async function handler(req, res) {
-    if (req.method !== 'POST') return res.status(405).send('Use POST');
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST' });
 
     try {
-        const { prompt: q } = req.body;
-        if (!q) return res.status(400).json({ error: "Insira um texto" });
+        const { prompt: inputPrompt } = req.body;
+        if (!inputPrompt) return res.status(400).json({ error: "Prompt vazio" });
 
-        // 1. Tradução Automática
-        // Dica: Se quiser textos exatos na imagem (ex: um manto escrito "Crisálida"),
-        // certifique-se de que o tradutor não altere a palavra.
-        const translateUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=pt&tl=en&dt=t&q=${encodeURIComponent(q)}`;
+        // 1. TRADUÇÃO PROFISSIONAL
+        const translateUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=pt&tl=en&dt=t&q=${encodeURIComponent(inputPrompt)}`;
         const transRes = await fetch(translateUrl);
         const transJson = await transRes.json();
-        const translatedPrompt = transJson[0][0][0];
+        const translatedText = transJson[0][0][0];
 
-        // 2. Configurações da Cloudflare
-        // 🚨 LEMBRE-SE DE TROCAR SEU TOKEN NO PAINEL E USAR VARIÁVEIS DE AMBIENTE (.env) 🚨
-        const ACCOUNT_ID = "648085ab1193eeacc92d058d278a0d83"; 
-        const API_TOKEN = "EZnH74dXipNmuwQOtCAcW1oLQzJ5oKbTnpgBqJUI"; 
-        
-        // Substituindo pelo Flux-1-Schnell (Nível máximo de realismo e texto na CF)
+        // 2. REFINAMENTO DE REALISMO (NÍVEL NANO BANANA)
+        // O Flux odeia "tags" soltas. Ele ama descrições de fotografia real.
+        const ultraRealisticPrompt = `A high-end cinematic photo of ${translatedText}. Shot on 35mm lens, f/1.8, realistic skin textures, natural lighting, global illumination, 8k resolution, highly detailed, photorealistic, no distortion.`;
+
+        // 3. CREDENCIAIS (SEGURANÇA: REGENERE SEU TOKEN NO PAINEL)
+        const ACCOUNT_ID = "648085ab1193eeacc92d058d278a0d83";
+        const API_TOKEN = "EZnH74dXipNmuwQOtCAcW1oLQzJ5oKbTnpgBqJUI";
         const model = "@cf/black-forest-labs/flux-1-schnell"; 
 
-        // O Flux prefere prompts diretos. Limpamos a "sopa de palavras".
-        const finalPrompt = `${translatedPrompt}, highly detailed, 8k resolution, photorealistic`;
-
+        // 4. CHAMADA DE ALTA PRECISÃO
         const cfResponse = await fetch(
             `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/ai/run/${model}`,
             {
@@ -33,39 +30,29 @@ export default async function handler(req, res) {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    prompt: finalPrompt,
-                    // Flux Schnell só precisa de 4 a 8 steps. 
-                    // 8 garante a precisão de texto "Nano Banana" sem esgotar seus créditos diários.
-                    num_steps: 8 
+                    prompt: ultraRealisticPrompt,
+                    num_steps: 4, // O "NÚMERO MÁGICO" DO FLUX SCHNELL. Nem mais, nem menos.
+                    height: 1024,
+                    width: 1024
                 }),
             }
         );
 
         if (!cfResponse.ok) {
-            const errorText = await cfResponse.text();
-            return res.status(cfResponse.status).json({ error: "Erro CF", details: errorText });
+            const errorData = await cfResponse.json();
+            return res.status(cfResponse.status).json({ error: "Erro CF", details: errorData });
         }
 
-        // 3. Tratamento Híbrido de Resposta (Cloudflare -> Buffer)
-        const contentType = cfResponse.headers.get("content-type");
+        // 5. RESPOSTA DIRETA EM BUFFER (QUALIDADE MÁXIMA)
+        const arrayBuffer = await cfResponse.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
         
-        if (contentType && contentType.includes("application/json")) {
-            const json = await cfResponse.json();
-            const base64 = json.result?.image || json.image;
-            if (!base64) throw new Error("Imagem não encontrada no JSON");
-            
-            const buffer = Buffer.from(base64, 'base64');
-            res.setHeader('Content-Type', 'image/png');
-            return res.send(buffer);
-        } else {
-            const arrayBuffer = await cfResponse.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
-            res.setHeader('Content-Type', 'image/png');
-            return res.send(buffer);
-        }
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('X-Generator', 'Cloudflare-Flux-Elite');
+        return res.send(buffer);
 
     } catch (error) {
-        console.error("ERRO BUNIX:", error.message);
+        console.error("ERRO CRÍTICO:", error.message);
         return res.status(500).json({ error: "Falha na Geração", message: error.message });
     }
 }
