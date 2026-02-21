@@ -1,24 +1,24 @@
 export default async function handler(req, res) {
-    if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST' });
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido' });
 
     try {
-        const { prompt: userPrompt } = req.body;
-        if (!userPrompt) return res.status(400).json({ error: "Prompt vazio" });
+        const { prompt: q } = req.body;
+        if (!q) return res.status(400).json({ error: "O prompt é obrigatório" });
 
-        // 1. TRADUÇÃO E REFINAMENTO AGRESSIVO PARA REALISMO
-        const translateUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=pt&tl=en&dt=t&q=${encodeURIComponent(userPrompt)}`;
+        // 1. Tradução (Google Translate)
+        const translateUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=pt&tl=en&dt=t&q=${encodeURIComponent(q)}`;
         const transRes = await fetch(translateUrl);
         const transJson = await transRes.json();
-        const translatedText = transJson[0][0][0];
+        const translatedPrompt = transJson[0][0][0];
 
-        // Prompt moldado para forçar o SDXL a sair do modo "desenho"
-        const finalPrompt = `Extreme photorealism, RAW cinematic photo of ${translatedText}, highly detailed skin pores, 8k resolution, shot on Agfa Vista 400, soft natural lighting, masterpiece, sharp focus, hyper-detailed.`;
-        const negative = "plastic, blur, anime, cartoon, (deformed eyes, nose, ears, fingers), bad anatomy, drawing, illustration, 3d render, watermarks";
-
-        // 2. CREDENCIAIS (IMPORTANTE: Se der erro, verifique se o Token ainda vale!)
+        // 2. Configurações - MANDATÓRIO: Use o SDXL para realismo, o Flux Schnell na Cloudflare é capado.
         const ACCOUNT_ID = "648085ab1193eeacc92d058d278a0d83";
         const API_TOKEN = "EZnH74dXipNmuwQOtCAcW1oLQzJ5oKbTnpgBqJUI";
         const model = "@cf/stabilityai/stable-diffusion-xl-base-1.0";
+
+        // Prompt de Elite: Força o realismo e evita o aspecto de "lixo"
+        const finalPrompt = `Hyper-realistic RAW photo, ${translatedPrompt}, detailed skin pores, cinematic lighting, 8k, masterpiece, shot on 35mm lens.`;
+        const negativePrompt = "cartoon, anime, 3d, plastic, deformed, bad anatomy, blurry, low quality, text, watermark";
 
         const cfResponse = await fetch(
             `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/ai/run/${model}`,
@@ -30,29 +30,37 @@ export default async function handler(req, res) {
                 },
                 body: JSON.stringify({
                     prompt: finalPrompt,
-                    negative_prompt: negative,
-                    num_steps: 25, // Equilíbrio perfeito para não estourar a cota e manter a nitidez
-                    guidance: 8.5  // Aumenta a fidelidade ao que você escreveu
+                    negative_prompt: negativePrompt,
+                    num_steps: 30, // SDXL precisa de passos para não ficar borrado
+                    guidance: 7.5
                 }),
             }
         );
 
-        // 3. SE A CLOUDFLARE FALHAR, O CÓDIGO TE DIZ O PORQUÊ
+        // 3. Verificação Crítica de Erro
         if (!cfResponse.ok) {
-            const errorMsg = await cfResponse.text();
-            return res.status(cfResponse.status).json({ error: "Erro na Cloudflare", detalhes: errorMsg });
+            const errorData = await cfResponse.text();
+            console.error("Erro CF:", errorData);
+            return res.status(cfResponse.status).json({ error: "Cloudflare recusou", detalhes: errorData });
         }
 
-        // 4. TRATAMENTO DE IMAGEM SEM USAR 'BUFFER' (Evita erro de imagem quebrada)
+        // 4. Tratamento de Saída para o Vercel
+        // Vamos pegar o ArrayBuffer e converter para Buffer (Node.js)
         const arrayBuffer = await cfResponse.arrayBuffer();
-        const uint8Array = new Uint8Array(arrayBuffer);
-        
+        const buffer = Buffer.from(arrayBuffer);
+
+        // Se o buffer estiver vazio, a IA não gerou nada
+        if (buffer.length === 0) {
+            throw new Error("A imagem retornada está vazia.");
+        }
+
+        // Envia a imagem de volta com os headers corretos
         res.setHeader('Content-Type', 'image/png');
-        return res.send(uint8Array);
+        res.setHeader('Content-Length', buffer.length);
+        return res.send(buffer);
 
     } catch (error) {
-        // Isso vai te mostrar no console EXATAMENTE o que quebrou
-        console.error("DEBUG:", error.message);
-        return res.status(500).json({ error: "Erro Interno", message: error.message });
+        console.error("ERRO VERCEL:", error.message);
+        return res.status(500).json({ error: "Falha no Servidor", mensagem: error.message });
     }
 }
