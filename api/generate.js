@@ -2,25 +2,23 @@ export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST' });
 
     try {
-        const { prompt: inputPrompt } = req.body;
-        if (!inputPrompt) return res.status(400).json({ error: "Prompt vazio" });
+        const { prompt: userPrompt } = req.body;
+        if (!userPrompt) return res.status(400).json({ error: "Prompt vazio" });
 
-        // 1. TRADUÇÃO
-        const translateUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=pt&tl=en&dt=t&q=${encodeURIComponent(inputPrompt)}`;
+        // 1. TRADUÇÃO E REFINAMENTO AGRESSIVO PARA REALISMO
+        const translateUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=pt&tl=en&dt=t&q=${encodeURIComponent(userPrompt)}`;
         const transRes = await fetch(translateUrl);
         const transJson = await transRes.json();
         const translatedText = transJson[0][0][0];
 
-        // 2. PROMPT DE ELITE (Foco em Fotografia RAW)
-        // Mudamos a estratégia: usamos palavras de peso para o SDXL
-        const finalPrompt = `Professional RAW photo, ${translatedText}, high fidelity, 8k uhd, soft cinematic lighting, highly detailed skin, Fujifilm XT4, masterpiece, sharp focus.`;
-        const negativePrompt = "cartoon, anime, 3d, render, illustration, deformed, blurry, bad anatomy, text, watermark, low quality";
+        // Prompt moldado para forçar o SDXL a sair do modo "desenho"
+        const finalPrompt = `Extreme photorealism, RAW cinematic photo of ${translatedText}, highly detailed skin pores, 8k resolution, shot on Agfa Vista 400, soft natural lighting, masterpiece, sharp focus, hyper-detailed.`;
+        const negative = "plastic, blur, anime, cartoon, (deformed eyes, nose, ears, fingers), bad anatomy, drawing, illustration, 3d render, watermarks";
 
+        // 2. CREDENCIAIS (IMPORTANTE: Se der erro, verifique se o Token ainda vale!)
         const ACCOUNT_ID = "648085ab1193eeacc92d058d278a0d83";
         const API_TOKEN = "EZnH74dXipNmuwQOtCAcW1oLQzJ5oKbTnpgBqJUI";
-        
-        // MUDAMOS O MODELO: Saindo do Flux, indo para o SDXL Base
-        const model = "@cf/stabilityai/stable-diffusion-xl-base-1.0"; 
+        const model = "@cf/stabilityai/stable-diffusion-xl-base-1.0";
 
         const cfResponse = await fetch(
             `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/ai/run/${model}`,
@@ -32,38 +30,29 @@ export default async function handler(req, res) {
                 },
                 body: JSON.stringify({
                     prompt: finalPrompt,
-                    negative_prompt: negativePrompt, // SDXL usa negative prompt (o Flux não)
-                    num_steps: 30, // SDXL precisa de mais passos para ser realista
-                    guidance: 7.5
+                    negative_prompt: negative,
+                    num_steps: 25, // Equilíbrio perfeito para não estourar a cota e manter a nitidez
+                    guidance: 8.5  // Aumenta a fidelidade ao que você escreveu
                 }),
             }
         );
 
-        // 3. VERIFICAÇÃO DE RESPOSTA (Evita a imagem quebrada)
+        // 3. SE A CLOUDFLARE FALHAR, O CÓDIGO TE DIZ O PORQUÊ
         if (!cfResponse.ok) {
-            const errorText = await cfResponse.text();
-            console.error("Erro da Cloudflare:", errorText);
-            return res.status(500).json({ error: "A Cloudflare recusou o pedido", detalhes: errorText });
+            const errorMsg = await cfResponse.text();
+            return res.status(cfResponse.status).json({ error: "Erro na Cloudflare", detalhes: errorMsg });
         }
 
-        const contentType = cfResponse.headers.get("content-type");
-
-        // Se a Cloudflare retornar JSON em vez de imagem, é um erro interno
-        if (contentType && contentType.includes("application/json")) {
-            const errorJson = await cfResponse.json();
-            return res.status(500).json({ error: "Erro na geração", details: errorJson });
-        }
-
-        // 4. ENVIO SEGURO DO BUFFER
+        // 4. TRATAMENTO DE IMAGEM SEM USAR 'BUFFER' (Evita erro de imagem quebrada)
         const arrayBuffer = await cfResponse.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
+        const uint8Array = new Uint8Array(arrayBuffer);
         
         res.setHeader('Content-Type', 'image/png');
-        res.setHeader('Content-Length', buffer.length); // Garante que o navegador saiba o tamanho
-        return res.send(buffer);
+        return res.send(uint8Array);
 
     } catch (error) {
-        console.error("Erro no Servidor:", error.message);
-        return res.status(500).json({ error: "Falha Total", message: error.message });
+        // Isso vai te mostrar no console EXATAMENTE o que quebrou
+        console.error("DEBUG:", error.message);
+        return res.status(500).json({ error: "Erro Interno", message: error.message });
     }
 }
