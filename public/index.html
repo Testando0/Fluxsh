@@ -5,16 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bunix | Gerador Oficial Crisálida</title>
     <style>
-        :root { --primary: #00d4ff; --bg: #050505; }
-        body { background: var(--bg); color: #fff; font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .card { background: #111; border: 1px solid var(--primary); padding: 30px; border-radius: 20px; width: 400px; text-align: center; box-shadow: 0 0 20px rgba(0,212,255,0.2); }
-        h1 { color: var(--primary); text-transform: uppercase; margin-bottom: 5px; }
-        p { font-size: 12px; color: #aaa; margin-bottom: 20px; }
-        input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #333; background: #000; color: #fff; margin-bottom: 15px; box-sizing: border-box; }
-        button { width: 100%; padding: 12px; border-radius: 8px; border: none; background: var(--primary); color: #000; font-weight: bold; cursor: pointer; }
-        #result { margin-top: 20px; min-height: 300px; border: 1px dashed #333; display: flex; align-items: center; justify-content: center; }
-        img { width: 100%; border-radius: 10px; }
-        .loader { border: 3px solid #333; border-top: 3px solid var(--primary); border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
+        :root { --primary: #00d4ff; --bg: #050505; --card-bg: #111; }
+        body { background: var(--bg); color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: var(--card-bg); border: 1px solid var(--primary); padding: 30px; border-radius: 20px; width: 90%; max-width: 450px; text-align: center; box-shadow: 0 0 30px rgba(0,212,255,0.15); transition: 0.3s; }
+        h1 { color: var(--primary); text-transform: uppercase; margin: 0; letter-spacing: 2px; }
+        p { font-size: 12px; color: #777; margin-bottom: 25px; }
+        
+        .input-group { position: relative; margin-bottom: 20px; }
+        input { width: 100%; padding: 15px; border-radius: 12px; border: 1px solid #333; background: #000; color: #fff; box-sizing: border-box; outline: none; transition: 0.3s; }
+        input:focus { border-color: var(--primary); box-shadow: 0 0 10px rgba(0,212,255,0.3); }
+        
+        button { width: 100%; padding: 15px; border-radius: 12px; border: none; background: var(--primary); color: #000; font-weight: bold; cursor: pointer; text-transform: uppercase; transition: 0.2s; }
+        button:hover { opacity: 0.9; transform: scale(1.02); }
+        button:disabled { background: #444; cursor: not-allowed; transform: scale(1); }
+
+        #result { margin-top: 25px; min-height: 200px; border: 2px dashed #222; border-radius: 15px; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; background: #080808; padding: 10px; }
+        img { width: 100%; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        
+        .loader { border: 4px solid #1a1a1a; border-top: 4px solid var(--primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        .error-msg { color: #ff4d4d; font-size: 14px; padding: 20px; }
+        .download-btn { margin-top: 15px; color: var(--primary); text-decoration: none; font-size: 13px; border: 1px solid var(--primary); padding: 8px 15px; border-radius: 8px; transition: 0.3s; }
+        .download-btn:hover { background: var(--primary); color: #000; }
+
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
@@ -23,40 +35,85 @@
 <div class="card">
     <h1>BUNIX 🦋</h1>
     <p>Gerador Oficial da Crisálida</p>
-    <input type="text" id="q" placeholder="O que deseja criar?">
-    <button id="btn" onclick="generate()">GERAR ARTE</button>
-    <div id="result">Aguardando...</div>
+    
+    <div class="input-group">
+        <input type="text" id="q" placeholder="Ex: Um astronauta de neon no espaço..." autocomplete="off">
+    </div>
+    
+    <button id="btn" onclick="generate()">Gerar Arte</button>
+
+    <div id="result">
+        <span style="color: #444;">Aguardando comando...</span>
+    </div>
 </div>
 
 <script>
+    // Atalho para o Enter
+    document.getElementById('q').addEventListener('keypress', (e) => e.key === 'Enter' && generate());
+
     async function generate() {
-        const q = document.getElementById('q').value;
+        const promptInput = document.getElementById('q');
         const btn = document.getElementById('btn');
         const result = document.getElementById('result');
+        const query = promptInput.value.trim();
 
-        if(!q) return alert("Insira um texto!");
+        if(!query) return alert("O que vamos criar hoje? Digite algo!");
 
+        // Estado de carregamento
         btn.disabled = true;
-        btn.innerText = "GERANDO...";
-        result.innerHTML = '<div class="loader"></div>';
+        btn.innerText = "Sintonizando...";
+        result.innerHTML = '<div class="loader"></div><p style="margin-top:15px; color:var(--primary)">Criando sua obra...</p>';
 
         try {
-            const res = await fetch('/api/generate', {
+            const response = await fetch('/api/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt: q })
+                body: JSON.stringify({ prompt: query })
             });
 
-            if(!res.ok) throw new Error("Erro na geração");
+            const contentType = response.headers.get("content-type");
 
-            const blob = await res.blob();
-            result.innerHTML = `<img src="${URL.createObjectURL(blob)}">`;
+            // Caso 1: A resposta é uma Imagem Direta (Buffer/Blob)
+            if (contentType && contentType.includes("image")) {
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                renderImage(url, result);
+            } 
+            
+            // Caso 2: A resposta é um JSON (Contendo erro ou URL da imagem)
+            else if (contentType && contentType.includes("application/json")) {
+                const data = await response.json();
+                
+                if (data.url) {
+                    // Se o backend retornou { url: "..." }
+                    renderImage(data.url, result);
+                } else if (data.error || data.message) {
+                    // Se o backend retornou um erro estruturado
+                    throw new Error(data.error || data.message);
+                } else {
+                    throw new Error("Resposta JSON desconhecida");
+                }
+            } 
+            
+            // Caso 3: Erros HTTP (404, 500, etc) sem corpo específico
+            else if (!response.ok) {
+                throw new Error(`Erro do servidor: ${response.status}`);
+            }
+
         } catch (err) {
-            result.innerHTML = `<span style="color:red">Falha no Servidor</span>`;
+            console.error(err);
+            result.innerHTML = `<div class="error-msg">⚠️ ${err.message}</div>`;
         } finally {
             btn.disabled = false;
-            btn.innerText = "GERAR ARTE";
+            btn.innerText = "Gerar Arte";
         }
+    }
+
+    function renderImage(url, container) {
+        container.innerHTML = `
+            <img src="${url}" alt="Arte Bunix">
+            <a href="${url}" download="bunix-arte.jpg" class="download-btn">⬇️ Salvar Arte</a>
+        `;
     }
 </script>
 
