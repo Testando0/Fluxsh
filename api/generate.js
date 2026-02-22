@@ -11,14 +11,18 @@ export default async function handler(req, res) {
         const transJson = await transRes.json();
         const translatedPrompt = transJson[0][0][0];
 
-        // 2. Configurações - MANDATÓRIO: Use o SDXL para realismo, o Flux Schnell na Cloudflare é capado.
+        // 2. Configurações - ATUALIZADO: Utilizando o modelo FLUX.2 [klein] 9B
         const ACCOUNT_ID = "648085ab1193eeacc92d058d278a0d83";
         const API_TOKEN = "EZnH74dXipNmuwQOtCAcW1oLQzJ5oKbTnpgBqJUI";
-        const model = "@cf/stabilityai/stable-diffusion-xl-base-1.0";
+        const model = "@cf/black-forest-labs/flux-2-klein-9b";
 
-        // Prompt de Elite: Força o realismo e evita o aspecto de "lixo"
+        // Prompt de Elite: O Flux tem uma compreensão de linguagem natural muito superior ao SDXL.
+        // Mantive os gatilhos de realismo para garantir a textura e iluminação que você quer.
         const finalPrompt = `Hyper-realistic RAW photo, ${translatedPrompt}, detailed skin pores, cinematic lighting, 8k, masterpiece, shot on 35mm lens.`;
-        const negativePrompt = "cartoon, anime, 3d, plastic, deformed, bad anatomy, blurry, low quality, text, watermark";
+
+        // O FLUX.2 na Cloudflare EXIGE que o payload seja enviado como multipart/form-data
+        const formData = new FormData();
+        formData.append("prompt", finalPrompt);
 
         const cfResponse = await fetch(
             `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/ai/run/${model}`,
@@ -26,14 +30,10 @@ export default async function handler(req, res) {
                 method: "POST",
                 headers: {
                     "Authorization": `Bearer ${API_TOKEN}`,
-                    "Content-Type": "application/json",
+                    // IMPORTANTE: Nunca defina o "Content-Type" manualmente quando usar FormData no fetch.
+                    // O próprio fetch se encarrega de colocar 'multipart/form-data' com o boundary (fronteira) correto.
                 },
-                body: JSON.stringify({
-                    prompt: finalPrompt,
-                    negative_prompt: negativePrompt,
-                    num_steps: 30, // SDXL precisa de passos para não ficar borrado
-                    guidance: 7.5
-                }),
+                body: formData,
             }
         );
 
@@ -45,17 +45,15 @@ export default async function handler(req, res) {
         }
 
         // 4. Tratamento de Saída para o Vercel
-        // Vamos pegar o ArrayBuffer e converter para Buffer (Node.js)
         const arrayBuffer = await cfResponse.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
 
-        // Se o buffer estiver vazio, a IA não gerou nada
         if (buffer.length === 0) {
             throw new Error("A imagem retornada está vazia.");
         }
 
-        // Envia a imagem de volta com os headers corretos
-        res.setHeader('Content-Type', 'image/png');
+        // Retorna a imagem
+        res.setHeader('Content-Type', 'image/jpeg'); // Flux geralmente retorna JPEG
         res.setHeader('Content-Length', buffer.length);
         return res.send(buffer);
 
