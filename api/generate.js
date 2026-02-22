@@ -9,62 +9,66 @@ export default async function handler(req, res) {
         const translateUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=pt&tl=en&dt=t&q=${encodeURIComponent(q)}`;
         const transRes = await fetch(translateUrl);
         const transJson = await transRes.json();
-        const translatedPrompt = transJson[0][0][0];
 
-        // 2. Configurações
+        // Une todos os fragmentos da tradução corretamente
+        const translatedPrompt = transJson[0].map(s => s[0]).join("");
+
+        // 2. Prompt fiel ao texto:
+        //    - O sujeito do usuário vem PRIMEIRO (o Flux prioriza o início)
+        //    - Descrição em linguagem natural fluida, sem tags soltas
+        //    - Sem palavras de estilo que sobrepõem o conteúdo ("masterpiece", "RAW photo", "8k")
+        const finalPrompt = `${translatedPrompt}. The image must depict exactly and only what was described, with accurate colors, correct number of subjects, faithful scene composition, vivid details and cinematic lighting.`;
+
+        console.log("Prompt enviado ao Flux:", finalPrompt);
+
+        // 3. Cloudflare Workers AI — flux-2-klein-9b obriga multipart/form-data
         const ACCOUNT_ID = "648085ab1193eeacc92d058d278a0d83";
         const API_TOKEN  = "EZnH74dXipNmuwQOtCAcW1oLQzJ5oKbTnpgBqJUI";
         const model      = "@cf/black-forest-labs/flux-2-klein-9b";
 
-        const finalPrompt = `Hyper-realistic RAW photo, ${translatedPrompt}, detailed skin pores, cinematic lighting, 8k, masterpiece, shot on 35mm lens.`;
-
-        // 3. OBRIGATÓRIO: flux-2-klein-9b SÓ aceita multipart/form-data — nunca JSON
         const formData = new FormData();
         formData.append("prompt", finalPrompt);
-        // IMPORTANTE: NÃO defina Content-Type manualmente.
-        // O fetch adiciona o boundary correto automaticamente quando o body é FormData.
 
         const cfResponse = await fetch(
             `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/ai/run/${model}`,
             {
                 method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${API_TOKEN}`,
-                },
+                headers: { "Authorization": `Bearer ${API_TOKEN}` },
+                // SEM Content-Type — fetch define o boundary do FormData automaticamente
                 body: formData,
             }
         );
 
-        // 4. Verificação de erro HTTP
         if (!cfResponse.ok) {
             const errorText = await cfResponse.text();
             console.error("Erro CF:", errorText);
-            return res.status(cfResponse.status).json({
-                error: "Cloudflare recusou",
-                detalhes: errorText
-            });
+            return res.status(cfResponse.status).json({ error: "Cloudflare recusou", detalhes: errorText });
         }
 
-        // 5. flux-2-klein-9b retorna JSON com { result: { image: "<base64>" } }
-        const json = await cfResponse.json();
+        // 4. Processar resposta
+        const cfContentType = cfResponse.headers.get("content-type") || "";
 
-        // Localiza o base64 na estrutura retornada pela CF
-        const base64Image =
-            json?.result?.image ||   // caminho padrão Cloudflare Workers AI
-            json?.image         ||   // fallback direto
-            null;
+        // Caso A: Bytes de imagem diretos
+        if (cfContentType.includes("image/")) {
+            const buffer = Buffer.from(await cfResponse.arrayBuffer());
+            if (buffer.length === 0) throw new Error("Imagem retornada está vazia.");
+            res.setHeader("Content-Type", cfContentType);
+            res.setHeader("Content-Length", buffer.length);
+            res.setHeader("Cache-Control", "no-cache");
+            return res.send(buffer);
+        }
+
+        // Caso B: JSON com base64 { result: { image: "..." } }
+        const json = await cfResponse.json();
+        const base64Image = json?.result?.image || json?.image || null;
 
         if (!base64Image) {
             console.error("JSON inesperado da CF:", JSON.stringify(json));
             return res.status(500).json({ error: "Imagem não encontrada na resposta da Cloudflare." });
         }
 
-        // 6. Converte base64 → buffer e envia como JPEG
         const buffer = Buffer.from(base64Image, "base64");
-
-        if (buffer.length === 0) {
-            return res.status(500).json({ error: "A imagem decodificada está vazia." });
-        }
+        if (buffer.length === 0) throw new Error("Imagem base64 decodificada está vazia.");
 
         res.setHeader("Content-Type", "image/jpeg");
         res.setHeader("Content-Length", buffer.length);
