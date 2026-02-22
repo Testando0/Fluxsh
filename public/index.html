@@ -20,11 +20,21 @@
         button:disabled { background: #444; cursor: not-allowed; transform: scale(1); }
 
         #result { margin-top: 25px; min-height: 200px; border: 2px dashed #222; border-radius: 15px; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; background: #080808; padding: 10px; }
-        img { width: 100%; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        
+        /* Garante que a imagem nunca quebre o layout e seja sempre visível */
+        #result img {
+            width: 100%;
+            max-width: 100%;
+            height: auto;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            display: block;
+            object-fit: cover;
+        }
         
         .loader { border: 4px solid #1a1a1a; border-top: 4px solid var(--primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
         .error-msg { color: #ff4d4d; font-size: 14px; padding: 20px; }
-        .download-btn { margin-top: 15px; color: var(--primary); text-decoration: none; font-size: 13px; border: 1px solid var(--primary); padding: 8px 15px; border-radius: 8px; transition: 0.3s; }
+        .download-btn { margin-top: 15px; color: var(--primary); text-decoration: none; font-size: 13px; border: 1px solid var(--primary); padding: 8px 15px; border-radius: 8px; transition: 0.3s; display: inline-block; }
         .download-btn:hover { background: var(--primary); color: #000; }
 
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -48,7 +58,6 @@
 </div>
 
 <script>
-    // Atalho para o Enter
     document.getElementById('q').addEventListener('keypress', (e) => e.key === 'Enter' && generate());
 
     async function generate() {
@@ -57,9 +66,8 @@
         const result = document.getElementById('result');
         const query = promptInput.value.trim();
 
-        if(!query) return alert("O que vamos criar hoje? Digite algo!");
+        if (!query) return alert("O que vamos criar hoje? Digite algo!");
 
-        // Estado de carregamento
         btn.disabled = true;
         btn.innerText = "Sintonizando...";
         result.innerHTML = '<div class="loader"></div><p style="margin-top:15px; color:var(--primary)">Criando sua obra...</p>';
@@ -71,33 +79,41 @@
                 body: JSON.stringify({ prompt: query })
             });
 
-            const contentType = response.headers.get("content-type");
+            const contentType = response.headers.get("content-type") || "";
 
-            // Caso 1: A resposta é uma Imagem Direta (Buffer/Blob)
-            if (contentType && contentType.includes("image")) {
+            // Caso 1: Resposta é imagem binária direta
+            if (contentType.includes("image/")) {
                 const blob = await response.blob();
+
+                // Valida que o blob tem conteúdo antes de criar a URL
+                if (blob.size === 0) throw new Error("A imagem recebida está vazia.");
+
                 const url = URL.createObjectURL(blob);
-                renderImage(url, result);
-            } 
-            
-            // Caso 2: A resposta é um JSON (Contendo erro ou URL da imagem)
-            else if (contentType && contentType.includes("application/json")) {
+                renderImage(url, result, true); // true = é objectURL, precisará de revogação
+
+            // Caso 2: Resposta JSON (URL ou erro)
+            } else if (contentType.includes("application/json")) {
                 const data = await response.json();
-                
-                if (data.url) {
-                    // Se o backend retornou { url: "..." }
-                    renderImage(data.url, result);
-                } else if (data.error || data.message) {
-                    // Se o backend retornou um erro estruturado
-                    throw new Error(data.error || data.message);
-                } else {
-                    throw new Error("Resposta JSON desconhecida");
+
+                if (!response.ok) {
+                    throw new Error(data.error || data.mensagem || `Erro ${response.status}`);
                 }
-            } 
-            
-            // Caso 3: Erros HTTP (404, 500, etc) sem corpo específico
-            else if (!response.ok) {
-                throw new Error(`Erro do servidor: ${response.status}`);
+
+                if (data.url) {
+                    renderImage(data.url, result, false);
+                } else {
+                    throw new Error(data.error || data.mensagem || "Resposta inesperada do servidor.");
+                }
+
+            } else {
+                // Tenta tratar como blob de qualquer forma
+                if (!response.ok) throw new Error(`Erro do servidor: ${response.status}`);
+
+                const blob = await response.blob();
+                if (blob.size === 0) throw new Error("Resposta vazia recebida.");
+
+                const url = URL.createObjectURL(blob);
+                renderImage(url, result, true);
             }
 
         } catch (err) {
@@ -109,11 +125,31 @@
         }
     }
 
-    function renderImage(url, container) {
-        container.innerHTML = `
-            <img src="${url}" alt="Arte Bunix">
-            <a href="${url}" download="bunix-arte.jpg" class="download-btn">⬇️ Salvar Arte</a>
-        `;
+    function renderImage(url, container, isObjectURL) {
+        // Limpa o container antes de inserir
+        container.innerHTML = "";
+
+        const img = document.createElement("img");
+        img.alt = "Arte Bunix";
+
+        // Detecta erros de carregamento da imagem antes de exibir
+        img.onerror = () => {
+            container.innerHTML = `<div class="error-msg">⚠️ Imagem corrompida ou formato inválido.<br>Tente gerar novamente.</div>`;
+            if (isObjectURL) URL.revokeObjectURL(url); // libera memória
+        };
+
+        img.onload = () => {
+            // Imagem carregou com sucesso — adiciona o botão de download
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "bunix-arte.jpg";
+            link.className = "download-btn";
+            link.textContent = "⬇️ Salvar Arte";
+            container.appendChild(link);
+        };
+
+        img.src = url;
+        container.appendChild(img);
     }
 </script>
 
