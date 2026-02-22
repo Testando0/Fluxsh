@@ -5,40 +5,48 @@ export default async function handler(req, res) {
         const { prompt: q } = req.body;
         if (!q) return res.status(400).json({ error: "O prompt é obrigatório" });
 
-        // 1. Tradução PT → EN
+        // 1. Tradução PT → EN (une todos os fragmentos corretamente)
         const translateUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=pt&tl=en&dt=t&q=${encodeURIComponent(q)}`;
         const transRes  = await fetch(translateUrl);
         const transJson = await transRes.json();
         const translatedPrompt = transJson[0].map(s => s[0]).join("");
 
-        console.log("Prompt traduzido:", translatedPrompt);
+        // 2. Prompt técnico fotográfico para o Flux-dev
+        //    Estrutura: [sujeito exato] + [contexto] + [câmera/técnica] + [qualidade]
+        //    O Flux-dev responde muito melhor a descrições de câmera real do que a palavras como "realistic"
+        const finalPrompt = [
+            translatedPrompt,                          // sujeito exato do usuário — SEMPRE PRIMEIRO
+            "photograph taken with a Sony A7R V",      // câmera real = output fotográfico
+            "35mm f/1.8 lens",                         // lente específica = bokeh e profundidade reais
+            "natural lighting",                        // iluminação naturalista
+            "hyper detailed",                          // nível de detalhe máximo
+            "photojournalism quality",                 // estilo documental = sem artistismo exagerado
+            "ultra sharp focus",                       // foco preciso no sujeito
+            "4K resolution"                            // resolução alta
+        ].join(", ");
 
-        // 2. Cloudflare Workers AI — dreamshaper-8-lcm
-        //    Único modelo da Cloudflare com fine-tune explícito para FOTORREALISMO.
-        //    Aceita JSON direto (não precisa de FormData).
-        //    Referência: https://developers.cloudflare.com/workers-ai/models/dreamshaper-8-lcm
+        console.log("✅ Prompt final:", finalPrompt);
+
+        // 3. Cloudflare Workers AI — flux-2-dev
+        //    OBRIGATÓRIO: multipart/form-data (nunca JSON)
+        //    steps 50 + guidance 7 = máxima fidelidade e qualidade
         const ACCOUNT_ID = "648085ab1193eeacc92d058d278a0d83";
         const API_TOKEN  = "EZnH74dXipNmuwQOtCAcW1oLQzJ5oKbTnpgBqJUI";
-        const model      = "@cf/lykon/dreamshaper-8-lcm";
+        const model      = "@cf/black-forest-labs/flux-2-dev";
 
-        const payload = {
-            prompt: `RAW photo, ${translatedPrompt}, photorealistic, 8k uhd, dslr, soft lighting, high quality, film grain, Fujifilm XT3`,
-            negative_prompt: "cartoon, anime, illustration, painting, drawing, art, sketch, 3d render, cgi, animated, extra limbs, extra fingers, extra heads, deformed, disfigured, bad anatomy, blurry, low quality, watermark, signature",
-            guidance_scale: 8,   // alto = mais fiel ao prompt e mais realista
-            num_steps: 20,       // máximo permitido pelo LCM para qualidade
-            width: 768,
-            height: 768,
-        };
+        const formData = new FormData();
+        formData.append("prompt",   finalPrompt);
+        formData.append("steps",    "50");   // máximo de passos = máxima qualidade
+        formData.append("guidance", "7");    // alta aderência ao prompt
+        formData.append("width",    "1024");
+        formData.append("height",   "1024");
 
         const cfResponse = await fetch(
             `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/ai/run/${model}`,
             {
                 method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${API_TOKEN}`,
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(payload),
+                headers: { "Authorization": `Bearer ${API_TOKEN}` },
+                body: formData,
             }
         );
 
@@ -48,9 +56,10 @@ export default async function handler(req, res) {
             return res.status(cfResponse.status).json({ error: "Cloudflare recusou", detalhes: errorText });
         }
 
-        // 3. dreamshaper-8-lcm retorna a imagem como bytes diretos (image/jpeg)
+        // 4. Processar resposta
         const cfContentType = cfResponse.headers.get("content-type") || "";
 
+        // Caso A: bytes de imagem diretos
         if (cfContentType.includes("image/")) {
             const buffer = Buffer.from(await cfResponse.arrayBuffer());
             if (buffer.length === 0) throw new Error("Imagem retornada está vazia.");
@@ -60,7 +69,7 @@ export default async function handler(req, res) {
             return res.send(buffer);
         }
 
-        // Fallback: JSON com base64 (segurança)
+        // Caso B: JSON com base64 { result: { image: "..." } }
         const json = await cfResponse.json();
         const base64Image = json?.result?.image || json?.image || null;
 
@@ -81,4 +90,4 @@ export default async function handler(req, res) {
         console.error("ERRO VERCEL:", error.message);
         return res.status(500).json({ error: "Falha no Servidor", mensagem: error.message });
     }
-        }
+                          }
