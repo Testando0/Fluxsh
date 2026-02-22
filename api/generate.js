@@ -5,23 +5,18 @@ export default async function handler(req, res) {
         const { prompt: q } = req.body;
         if (!q) return res.status(400).json({ error: "O prompt é obrigatório" });
 
-        // 1. Tradução (Google Translate)
+        // 1. Tradução PT → EN
         const translateUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=pt&tl=en&dt=t&q=${encodeURIComponent(q)}`;
         const transRes = await fetch(translateUrl);
         const transJson = await transRes.json();
-
-        // Une todos os fragmentos da tradução corretamente
         const translatedPrompt = transJson[0].map(s => s[0]).join("");
 
-        // 2. Prompt fiel ao texto:
-        //    - O sujeito do usuário vem PRIMEIRO (o Flux prioriza o início)
-        //    - Descrição em linguagem natural fluida, sem tags soltas
-        //    - Sem palavras de estilo que sobrepõem o conteúdo ("masterpiece", "RAW photo", "8k")
-        const finalPrompt = `${translatedPrompt}. The image must depict exactly and only what was described, with accurate colors, correct number of subjects, faithful scene composition, vivid details and cinematic lighting.`;
+        // 2. Prompt = APENAS o que o usuário digitou, traduzido. Zero adições.
+        const finalPrompt = translatedPrompt;
 
         console.log("Prompt enviado ao Flux:", finalPrompt);
 
-        // 3. Cloudflare Workers AI — flux-2-klein-9b obriga multipart/form-data
+        // 3. Cloudflare Workers AI
         const ACCOUNT_ID = "648085ab1193eeacc92d058d278a0d83";
         const API_TOKEN  = "EZnH74dXipNmuwQOtCAcW1oLQzJ5oKbTnpgBqJUI";
         const model      = "@cf/black-forest-labs/flux-2-klein-9b";
@@ -34,7 +29,6 @@ export default async function handler(req, res) {
             {
                 method: "POST",
                 headers: { "Authorization": `Bearer ${API_TOKEN}` },
-                // SEM Content-Type — fetch define o boundary do FormData automaticamente
                 body: formData,
             }
         );
@@ -48,7 +42,6 @@ export default async function handler(req, res) {
         // 4. Processar resposta
         const cfContentType = cfResponse.headers.get("content-type") || "";
 
-        // Caso A: Bytes de imagem diretos
         if (cfContentType.includes("image/")) {
             const buffer = Buffer.from(await cfResponse.arrayBuffer());
             if (buffer.length === 0) throw new Error("Imagem retornada está vazia.");
@@ -58,7 +51,6 @@ export default async function handler(req, res) {
             return res.send(buffer);
         }
 
-        // Caso B: JSON com base64 { result: { image: "..." } }
         const json = await cfResponse.json();
         const base64Image = json?.result?.image || json?.image || null;
 
@@ -79,4 +71,4 @@ export default async function handler(req, res) {
         console.error("ERRO VERCEL:", error.message);
         return res.status(500).json({ error: "Falha no Servidor", mensagem: error.message });
     }
-                }
+            }
