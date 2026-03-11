@@ -11,33 +11,24 @@ export default async function handler(req, res) {
         const transJson = await transRes.json();
         const translatedPrompt = transJson[0].map(s => s[0]).join("");
 
-        // 2. Prompt técnico fotográfico para o Flux-dev
-        //    Estrutura: [sujeito exato] + [contexto] + [câmera/técnica] + [qualidade]
-        //    O Flux-dev responde muito melhor a descrições de câmera real do que a palavras como "realistic"
-        const finalPrompt = [
-            translatedPrompt,                          // sujeito exato do usuário — SEMPRE PRIMEIRO
-            "photograph taken with a Sony A7R V",      // câmera real = output fotográfico
-            "35mm f/1.8 lens",                         // lente específica = bokeh e profundidade reais
-            "natural lighting",                        // iluminação naturalista
-            "hyper detailed",                          // nível de detalhe máximo
-            "photojournalism quality",                 // estilo documental = sem artistismo exagerado
-            "ultra sharp focus",                       // foco preciso no sujeito
-            "4K resolution"                            // resolução alta
-        ].join(", ");
+        // 2. Prompt técnico fotográfico para o FLUX.2
+        // A família FLUX responde muito melhor a parágrafos em linguagem natural 
+        // em vez de "tags" separadas por vírgula.
+        const finalPrompt = `A breathtaking, hyper-realistic, award-winning photograph of ${translatedPrompt}. Shot on a Sony A7R V with a 35mm f/1.8 lens. Natural, unfiltered lighting, intricate true-to-life details, authentic photojournalism style, ultra-sharp focus, 8K resolution, unedited RAW photography aesthetic.`;
 
         console.log("✅ Prompt final:", finalPrompt);
 
-        // 3. Cloudflare Workers AI — flux-2-dev
-        //    OBRIGATÓRIO: multipart/form-data (nunca JSON)
-        //    steps 50 + guidance 7 = máxima fidelidade e qualidade
+        // 3. Cloudflare Workers AI — FLUX.2 klein 4B
         const ACCOUNT_ID = "648085ab1193eeacc92d058d278a0d83";
         const API_TOKEN  = "EZnH74dXipNmuwQOtCAcW1oLQzJ5oKbTnpgBqJUI";
-        const model      = "@cf/black-forest-labs/flux-2-dev";
+        
+        // Verifique na documentação da CF o ID exato, geralmente segue este padrão:
+        const model      = "@cf/black-forest-labs/flux-2-klein-4b";
 
         const formData = new FormData();
         formData.append("prompt",   finalPrompt);
-        formData.append("steps",    "50");   // máximo de passos = máxima qualidade
-        formData.append("guidance", "7");    // alta aderência ao prompt
+        formData.append("steps",    "50");   // Máximo de passos para renderização refinada
+        formData.append("guidance", "5.0");  // FLUX funciona melhor entre 3.5 e 5.5.
         formData.append("width",    "1024");
         formData.append("height",   "1024");
 
@@ -59,7 +50,7 @@ export default async function handler(req, res) {
         // 4. Processar resposta
         const cfContentType = cfResponse.headers.get("content-type") || "";
 
-        // Caso A: bytes de imagem diretos
+        // Caso A: bytes de imagem diretos (Blob)
         if (cfContentType.includes("image/")) {
             const buffer = Buffer.from(await cfResponse.arrayBuffer());
             if (buffer.length === 0) throw new Error("Imagem retornada está vazia.");
@@ -90,4 +81,4 @@ export default async function handler(req, res) {
         console.error("ERRO VERCEL:", error.message);
         return res.status(500).json({ error: "Falha no Servidor", mensagem: error.message });
     }
-                          }
+}
